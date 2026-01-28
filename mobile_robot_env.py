@@ -84,8 +84,6 @@ class PiperIKEnv(gym.Env):
         self.target_max_dist = float(target_max_dist)
         self.target_pos = np.zeros(3, dtype=np.float32)
         self.target_z_amp = 0.10
-        self.curriculum_episodes = 300
-        self.episode_count = 0
 
         # 回合参数
         self.episode_len = int(max_episode_length)
@@ -227,12 +225,7 @@ class PiperIKEnv(gym.Env):
         dir_xy = np.array([np.cos(theta), np.sin(theta)], dtype=np.float32)
         world_dir = dir_xy[0] * heading_xy + dir_xy[1] * left_xy
         target_xy = base_xy + r * world_dir
-        progress = min(1.0, self.episode_count / float(self.curriculum_episodes))
-        if self.np_random.random() < progress:
-            u = self.np_random.beta(0.5, 0.5)
-        else:
-            u = self.np_random.random()
-        target_z = float(ee_pos[2] + (2.0 * u - 1.0) * self.target_z_amp)
+        target_z = float(ee_pos[2] + self.np_random.uniform(-self.target_z_amp, self.target_z_amp))
         self.target_pos = np.array([target_xy[0], target_xy[1], target_z], dtype=np.float32)
         self._set_target_body_pose(self.target_pos)
 
@@ -254,7 +247,6 @@ class PiperIKEnv(gym.Env):
         if seed is not None:
             self.seed(seed)
 
-        self.episode_count += 1
         qpos_base = self.model.qpos0[0:7].copy()
         qvel_base = np.zeros(6, dtype=np.float32)
 
