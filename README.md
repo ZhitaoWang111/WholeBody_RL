@@ -5,9 +5,9 @@
 
 任务设定（已简化）：
 - 目标点位于底盘前方 ±60° 扇形
-- 距离 1–2m
+- 距离 2–3m
 - 目标 z 相对 `ee_site` 在 ±10cm 内
-- 观测仅 `state(8)` + `target(3)`
+- 观测仅 `state(10)` + `target(3)`
 - 动作为 9 维：底盘(3) + 6 关节
 - 夹爪固定开，不参与控制
 
@@ -22,23 +22,15 @@
 - `model_assets/fw_mini_single_piper/fw_mini_single_piper_v2.xml` MuJoCo 模型
 - `car_controller/` 底盘控制器
 
-## 环境配置
+## ✅ 环境安装
 
-建议使用 Python 3.9+，并确保 MuJoCo 可用。
-
-安装依赖（按需增减）：
+### 创建虚拟环境并安装依赖
 
 ```bash
-pip install torch gymnasium mujoco tyro numpy tqdm
+$ conda create -n rl_ik python=3.10.9
+$ conda activate rl_ik
+$ pip install -r requirements.txt
 ```
-
-需使用 wandb 与 GPU：
-```bash
-pip install wandb
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-```
-
-> 如需其他 CUDA 版本，请替换为对应的 PyTorch 官方安装源。
 
 ## 启动方式
 
@@ -73,7 +65,7 @@ python test_ik_task.py \
 
 ## 说明
 
-- 观测：`state(8) = base_xy + 6 关节`，`target(3) = ee_site -> target`
+- 观测：`state(10) = base_xy + base_heading_xy + 6 关节`，`target(3) = ee_site -> target`
 - 动作：`[vx, vy, wz] + 6 关节增量`（tanh 高斯策略）
 - 终止条件：成功（距离阈值）或超出最大步数
 

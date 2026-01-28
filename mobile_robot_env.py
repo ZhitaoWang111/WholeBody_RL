@@ -71,7 +71,7 @@ class PiperIKEnv(gym.Env):
         # Observation space: state + target vector (ee->target)
         self.observation_space = spaces.Dict(
             {
-                "state": spaces.Box(low=-np.inf, high=np.inf, shape=(8,), dtype=np.float32),
+                "state": spaces.Box(low=-np.inf, high=np.inf, shape=(10,), dtype=np.float32),
                 "target": spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float32),
             }
         )
@@ -217,8 +217,9 @@ class PiperIKEnv(gym.Env):
 
         theta = float(self.np_random.uniform(-np.pi / 3.0, np.pi / 3.0))
         r = float(self.np_random.uniform(self.target_min_dist, self.target_max_dist))
-        base_xmat = np.asarray(self.data.body("base_link").xmat, dtype=np.float32).reshape(3, 3)
-        heading_xy = base_xmat[:2, 1]
+        base_xmat = np.asarray(self.data.body("body_car").xmat, dtype=np.float32).reshape(3, 3)
+        # body_car 的朝向：x 轴为前向
+        heading_xy = base_xmat[:2, 0]
         heading_xy = heading_xy / (float(np.linalg.norm(heading_xy)) + 1e-6)
         left_xy = np.array([-heading_xy[1], heading_xy[0]], dtype=np.float32)
         dir_xy = np.array([np.cos(theta), np.sin(theta)], dtype=np.float32)
@@ -267,11 +268,19 @@ class PiperIKEnv(gym.Env):
 
     def _get_state_observation(self):
         base_xy = np.asarray(self.data.body("base_link").xpos[:2], dtype=np.float32)
+        base_xmat = np.asarray(self.data.body("body_car").xmat, dtype=np.float32).reshape(3, 3)
+        # body_car 的朝向：x 轴为前向
+        heading_xy = base_xmat[:2, 0]
+        heading_norm = float(np.linalg.norm(heading_xy))
+        if heading_norm < 1e-6:
+            heading_xy = np.array([1.0, 0.0], dtype=np.float32)
+        else:
+            heading_xy = heading_xy / heading_norm
         joint_positions = np.asarray(
             [self.data.joint(name).qpos[0] for name in self.state_joint_names],
             dtype=np.float32,
         )
-        return np.concatenate([base_xy, joint_positions], axis=0)
+        return np.concatenate([base_xy, heading_xy, joint_positions], axis=0)
 
     def _get_observation(self):
         state_obs = self._get_state_observation()

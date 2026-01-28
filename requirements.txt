@@ -1,0 +1,7 @@
+numpy
+torch
+gymnasium
+mujoco
+tyro
+tqdm
+wandb
