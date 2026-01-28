@@ -41,10 +41,10 @@ def main() -> None:
     parser.add_argument(
         "--checkpoint",
         type=str,
-        default="runs/piper_ik_try3/100.pt",
+        default="/home/wzt/wzt/mycode/WholeBody_RL/runs/piper_ik_try__1769597865/200.pt",
     )
     parser.add_argument("--episodes", type=int, default=10)
-    parser.add_argument("--max-steps", type=int, default=40)
+    parser.add_argument("--max-steps", type=int, default=100)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--target-min", type=float, default=2.0)
     parser.add_argument("--target-max", type=float, default=3.0)
@@ -60,6 +60,7 @@ def main() -> None:
         target_min_dist=args.target_min,
         target_max_dist=args.target_max,
         sim_steps_per_action=args.sim_steps,
+        auto_reset=True,
     )
 
     obs, _ = env.reset(seed=args.seed)

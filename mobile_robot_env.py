@@ -25,6 +25,7 @@ class PiperIKEnv(gym.Env):
         target_min_dist: float = 1.0,
         target_max_dist: float = 2.0,
         sim_steps_per_action: int = 20,
+        auto_reset: bool = False,
     ):
         super().__init__()
         self.assets_dir = os.path.join(os.path.dirname(__file__), "model_assets")
@@ -36,6 +37,8 @@ class PiperIKEnv(gym.Env):
         mujoco.mj_forward(self.model, self.data)
 
         self.visualization = bool(visualization)
+        self.auto_reset = bool(auto_reset)
+        self._need_reset = False
         if self.visualization:
             self.handle = mujoco.viewer.launch_passive(self.model, self.data)
             self.handle.cam.distance = 3
@@ -44,7 +47,7 @@ class PiperIKEnv(gym.Env):
         else:
             self.handle = None
 
-        # Joint limits for single arm (6 arm joints, gripper excluded)
+        # 机械臂关节限位（6 DoF，不含夹爪）
         self.joint_limits = np.array(
             [
                 (-2.618, 2.618),
@@ -57,18 +60,18 @@ class PiperIKEnv(gym.Env):
             dtype=np.float32,
         )
 
-        # Action: base vx, vy, wz + 6 arm commands
+        # 动作：底盘(vx, vy, wz) + 6关节增量
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(9,), dtype=np.float32)
 
-        # Arm joint naming
+        # 机械臂关节名
         self.arm_joint_names = ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6"]
         self.gripper_joint_name = "joint7"
         self.state_joint_names = self.arm_joint_names
 
-        # Site names
+        # 末端执行器 site
         self.ee_site_name = "ee_site"
 
-        # Observation space: state + target vector (ee->target)
+        # 观测：state + target(ee->target)
         self.observation_space = spaces.Dict(
             {
                 "state": spaces.Box(low=-np.inf, high=np.inf, shape=(10,), dtype=np.float32),
@@ -76,21 +79,23 @@ class PiperIKEnv(gym.Env):
             }
         )
 
-        # Target settings
+        # 目标采样参数
         self.target_min_dist = float(target_min_dist)
         self.target_max_dist = float(target_max_dist)
         self.target_pos = np.zeros(3, dtype=np.float32)
         self.target_z_amp = 0.10
+        self.curriculum_episodes = 300
+        self.episode_count = 0
 
-        # Episode settings
+        # 回合参数
         self.episode_len = int(max_episode_length)
         self.sim_steps_per_action = int(sim_steps_per_action)
 
-        # Base command scaling (m/s, m/s, rad/s)
+        # 底盘速度缩放 (m/s, m/s, rad/s)
         self.base_cmd_scale = np.array([1.5, 1.5, 2.0], dtype=np.float32)
         self.gripper_fixed = 0.045
 
-        # Reward params
+        # 奖励系数
         self.success_threshold = 0.04
         self.reach_k = 1.2
         self.base_k = 0.6
@@ -105,7 +110,7 @@ class PiperIKEnv(gym.Env):
         self.prev_dist_ee = None
         self.prev_dist_base = None
 
-        # Initial joint positions for left arm
+        # 初始关节姿态
         self.init_qpos_left = np.zeros(7, dtype=np.float32)
         self.init_qpos_left[6] = self.gripper_fixed
         self.init_qvel = np.zeros(7, dtype=np.float32)
@@ -113,13 +118,6 @@ class PiperIKEnv(gym.Env):
         self.np_random = np.random.default_rng()
 
         self._init_base_controller()
-
-    def _auto_base_cmd_scale(self) -> np.ndarray:
-        sim_time = max(self.sim_steps_per_action * float(self.model.opt.timestep), 1e-6)
-        total_time = max(self.episode_len * sim_time, 1e-6)
-        required_speed = self.target_max_dist / total_time
-        scale_xy = max(1.0, required_speed * 1.1)
-        return np.array([scale_xy, scale_xy, 1.5], dtype=np.float32)
 
     def _init_base_controller(self) -> None:
         params = {
@@ -145,6 +143,7 @@ class PiperIKEnv(gym.Env):
         )
 
     def _get_site_pos_ori(self, site_name: str) -> tuple[np.ndarray, np.ndarray]:
+        # 读取 site 的位姿（世界系）
         site_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, site_name)
         if site_id == -1:
             raise ValueError(f"Site '{site_name}' not found")
@@ -156,6 +155,7 @@ class PiperIKEnv(gym.Env):
         return position, quaternion.astype(np.float32)
 
     def map_action_to_joint_deltas(self, action: np.ndarray) -> np.ndarray:
+        # 将归一化动作映射成单步关节增量
         max_delta_per_step = np.array([0.075, 0.045, 0.045, 0.045, 0.045, 0.075], dtype=np.float32)
         action = np.asarray(action, dtype=np.float32)
         if action.shape != (6,):
@@ -165,6 +165,7 @@ class PiperIKEnv(gym.Env):
         return delta_action
 
     def apply_joint_deltas_with_limits(self, current_qpos: np.ndarray, delta_action: np.ndarray) -> np.ndarray:
+        # 应用增量并裁剪到关节限位
         current_qpos = np.asarray(current_qpos, dtype=np.float32)
         delta_action = np.asarray(delta_action, dtype=np.float32)
         new_qpos = current_qpos + delta_action
@@ -183,35 +184,36 @@ class PiperIKEnv(gym.Env):
             qpos_base = np.asarray(qpos_base, dtype=np.float32)
             if qpos_base.shape != (7,):
                 raise ValueError(f"qpos_base must have shape (7,), got {qpos_base.shape}")
-            self.data.qpos[0:7] = np.copy(qpos_base)
+            self.data.qpos[7:14] = np.copy(qpos_base)
 
         if qvel_base is not None:
             qvel_base = np.asarray(qvel_base, dtype=np.float32)
             if qvel_base.shape != (6,):
                 raise ValueError(f"qvel_base must have shape (6,), got {qvel_base.shape}")
-            self.data.qvel[0:6] = np.copy(qvel_base)
+            self.data.qvel[6:12] = np.copy(qvel_base)
 
         if qpos_left is not None:
             qpos_left = np.asarray(qpos_left, dtype=np.float32)
             if qpos_left.shape == (7,):
-                self.data.qpos[7:14] = np.copy(qpos_left)
+                self.data.qpos[14:21] = np.copy(qpos_left)
             elif qpos_left.shape == (8,):
-                self.data.qpos[7:15] = np.copy(qpos_left)
+                self.data.qpos[14:22] = np.copy(qpos_left)
             else:
                 raise ValueError(f"qpos_left must have shape (7,) or (8,), got {qpos_left.shape}")
 
         if qvel_left is not None:
             qvel_left = np.asarray(qvel_left, dtype=np.float32)
             if qvel_left.shape == (7,):
-                self.data.qvel[6:13] = np.copy(qvel_left)
+                self.data.qvel[12:19] = np.copy(qvel_left)
             elif qvel_left.shape == (8,):
-                self.data.qvel[6:14] = np.copy(qvel_left)
+                self.data.qvel[12:20] = np.copy(qvel_left)
             else:
                 raise ValueError(f"qvel_left must have shape (7,) or (8,), got {qvel_left.shape}")
 
         mujoco.mj_forward(self.model, self.data)
 
     def _sample_target(self) -> None:
+        # 在底盘前方±60°扇形采样目标点
         base_xy = np.asarray(self.data.body("base_link").xpos[:2], dtype=np.float32)
         ee_pos, _ = self._get_site_pos_ori(self.ee_site_name)
 
@@ -225,11 +227,17 @@ class PiperIKEnv(gym.Env):
         dir_xy = np.array([np.cos(theta), np.sin(theta)], dtype=np.float32)
         world_dir = dir_xy[0] * heading_xy + dir_xy[1] * left_xy
         target_xy = base_xy + r * world_dir
-        target_z = float(ee_pos[2] + self.np_random.uniform(-self.target_z_amp, self.target_z_amp))
+        progress = min(1.0, self.episode_count / float(self.curriculum_episodes))
+        if self.np_random.random() < progress:
+            u = self.np_random.beta(0.5, 0.5)
+        else:
+            u = self.np_random.random()
+        target_z = float(ee_pos[2] + (2.0 * u - 1.0) * self.target_z_amp)
         self.target_pos = np.array([target_xy[0], target_xy[1], target_z], dtype=np.float32)
         self._set_target_body_pose(self.target_pos)
 
     def _set_target_body_pose(self, pos_xyz: np.ndarray) -> None:
+        # 移动可视化目标球体（free joint）
         body_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "target")
         if body_id == -1:
             return
@@ -242,14 +250,18 @@ class PiperIKEnv(gym.Env):
 
 
     def reset(self, seed=None, options=None):
+        # 重置状态并重新采样目标
         if seed is not None:
             self.seed(seed)
 
+        self.episode_count += 1
         qpos_base = self.model.qpos0[0:7].copy()
         qvel_base = np.zeros(6, dtype=np.float32)
 
         qpos_left = self.init_qpos_left.copy()
         qvel_left = self.init_qvel.copy()
+        self.data.ctrl[:] = 0.0
+
         self._set_state(
             qpos_left=qpos_left,
             qvel_left=qvel_left,
@@ -257,8 +269,11 @@ class PiperIKEnv(gym.Env):
             qvel_base=qvel_base,
         )
 
+        # print([self.data.joint(n).qpos[0] for n in ["joint1","joint2","joint3","joint4","joint5","joint6"]])
+
         self.step_number = 0
         self.goal_reached = False
+        self._need_reset = False
         self.prev_dist_ee = None
         self.prev_dist_base = None
         self._sample_target()
@@ -267,6 +282,7 @@ class PiperIKEnv(gym.Env):
         return obs, {}
 
     def _get_state_observation(self):
+        # state = base_xy + base_heading_xy + 6关节
         base_xy = np.asarray(self.data.body("base_link").xpos[:2], dtype=np.float32)
         base_xmat = np.asarray(self.data.body("body_car").xmat, dtype=np.float32).reshape(3, 3)
         # body_car 的朝向：x 轴为前向
@@ -283,12 +299,14 @@ class PiperIKEnv(gym.Env):
         return np.concatenate([base_xy, heading_xy, joint_positions], axis=0)
 
     def _get_observation(self):
+        # target 为 ee -> target 的向量
         state_obs = self._get_state_observation()
         ee_pos, _ = self._get_site_pos_ori(self.ee_site_name)
         target = self.target_pos - ee_pos
         return {"state": state_obs, "target": target}
 
     def _compute_reward(self, action: np.ndarray):
+        # 奖励：接近末端 + 底盘距离带 + 进展 - 时间惩罚 + 成功奖励
         ee_pos, _ = self._get_site_pos_ori(self.ee_site_name)
         base_xy = np.asarray(self.data.body("base_link").xpos[:2], dtype=np.float32)
 
@@ -342,6 +360,14 @@ class PiperIKEnv(gym.Env):
         return reward, reward_info
 
     def step(self, action):
+        # 执行动作：底盘速度 + 关节目标，然后推进仿真
+        if self._need_reset:
+            if self.auto_reset:
+                obs, info = self.reset()
+                info["auto_reset"] = True
+                return obs, 0.0, False, False, info
+            raise RuntimeError("Environment needs reset() before calling step() again.")
+
         action = np.asarray(action, dtype=np.float32)
         if action.shape != (9,):
             raise ValueError(f"Action must have shape (9,), got {action.shape}")
@@ -373,6 +399,7 @@ class PiperIKEnv(gym.Env):
 
         terminated = bool(self.goal_reached)
         truncated = self.step_number >= self.episode_len
+        self._need_reset = terminated or truncated
 
         terminated_reasons = []
         if self.goal_reached:

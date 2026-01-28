@@ -73,7 +73,7 @@ def _log_wandb(metrics: dict, args, step: int):
 @dataclass
 class PPOArgs:
     # === 基础运行 ===
-    exp_name: Optional[str] = "piper_ik_try3"  # 实验名
+    exp_name: Optional[str] = "piper_ik_try"  # 实验名
     seed: int = 0  # 随机种子
     torch_deterministic: bool = True  # 是否使用确定性算子
     cuda: bool = True  # 是否使用 CUDA
@@ -84,7 +84,7 @@ class PPOArgs:
     track: bool = True  # 是否启用 wandb
     wandb_project_name: str = "whole_body_RL"  # wandb 项目名
     wandb_entity: Optional[str] = None  # wandb 实体/团队
-    render_training: bool = False  # 训练时渲染（建议仅单环境）
+    render_training: bool = True  # 训练时渲染（建议仅单环境）
 
     # === 环境 ===
     env_id: str = "PiperIKEnv"  # 环境 ID
@@ -98,7 +98,7 @@ class PPOArgs:
     use_target: bool = True  # 是否使用 target
 
     # === 训练规模 === 
-    num_envs: int = 16  # 并行环境数
+    num_envs: int = 32  # 并行环境数
     num_steps: int = 100  # 每次 rollout 步数
     total_timesteps: int = int(num_envs * num_steps * 1000)  # 总训练步数
 
@@ -196,11 +196,12 @@ def train(args: PPOArgs):
     args.num_iterations = args.total_timesteps // args.batch_size
 
     # === experiment name ===  
+    timestamp = int(time.time())
     if args.exp_name is None:
         args.exp_name = os.path.basename(__file__)[: -len(".py")]
-        run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+        run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{timestamp}"
     else:
-        run_name = args.exp_name
+        run_name = f"{args.exp_name}__{timestamp}"
     run_dir = os.path.join("runs", run_name)
     if not args.save_model:
         print(f"Model saving disabled. Checkpoints would be saved to: {run_dir}/<iteration>.pt")
