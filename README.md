@@ -11,6 +11,16 @@
 
 ## 训练效果
 
+初始化推理效果（iter=0）：
+
+![iter=0](video/0.gif)
+
+训练至 iter=150 的推理效果：
+
+![iter=150](video/150.gif)
+
+训练至 iter=250 的推理效果：
+
 ![训练效果](video/result.gif)
 
 任务设定（已简化）：

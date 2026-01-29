@@ -98,7 +98,7 @@ class PPOArgs:
     use_target: bool = True  # 是否使用 target
 
     # === 训练规模 === 
-    num_envs: int = 32  # 并行环境数
+    num_envs: int = 16  # 并行环境数
     num_steps: int = 100  # 每次 rollout 步数
     total_timesteps: int = int(num_envs * num_steps * 1000)  # 总训练步数
 

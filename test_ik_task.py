@@ -1,4 +1,5 @@
 import argparse
+import os
 import numpy as np
 import torch
 
@@ -38,11 +39,7 @@ def _load_agent(checkpoint_path, sample_obs, action_space, device):
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="IK model evaluation (single env, MuJoCo window).")
-    parser.add_argument(
-        "--checkpoint",
-        type=str,
-        default="/home/wzt/wzt/mycode/WholeBody_RL/runs/piper_ik_try__1769597865/200.pt",
-    )
+    parser.add_argument("--checkpoint", type=str, default='/home/wzt/wzt/mycode/WholeBody_RL/runs/piper_ik_try__1769597865/250.pt')
     parser.add_argument("--episodes", type=int, default=10)
     parser.add_argument("--max-steps", type=int, default=100)
     parser.add_argument("--seed", type=int, default=0)
@@ -65,7 +62,11 @@ def main() -> None:
 
     obs, _ = env.reset(seed=args.seed)
     obs_t = _convert_obs(obs, device)
-    agent = _load_agent(args.checkpoint, obs_t, env.action_space, device)
+    agent = None
+    if args.checkpoint and os.path.isfile(args.checkpoint):
+        agent = _load_agent(args.checkpoint, obs_t, env.action_space, device)
+    else:
+        print("No valid checkpoint provided. Using random actions for inference.")
 
     success_count = 0
     for ep in range(args.episodes):
@@ -73,10 +74,13 @@ def main() -> None:
         done = False
 
         for step in range(args.max_steps):
-            obs_t = _convert_obs(obs, device)
-            with torch.no_grad():
-                action = agent.get_action(obs_t, deterministic=True)
-            action_np = action.squeeze(0).cpu().numpy().reshape(env.action_space.shape)
+            if agent is None:
+                action_np = env.action_space.sample()
+            else:
+                obs_t = _convert_obs(obs, device)
+                with torch.no_grad():
+                    action = agent.get_action(obs_t, deterministic=True)
+                action_np = action.squeeze(0).cpu().numpy().reshape(env.action_space.shape)
 
             obs, reward, terminated, truncated, info = env.step(action_np)
             if terminated or truncated:
