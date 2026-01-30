@@ -1,7 +1,7 @@
-# Whole-Body IK RL (简化版)
+# Whole-Body IK RL
 
-本仓库是一个精简的移动底盘 + 机械臂 IK 强化学习任务，基于 MuJoCo 与 PPO 训练。
-目标：控制底盘与 6 关节机械臂，让 `ee_site` 到达目标点。
+本仓库是一个移动底盘 + 机械臂 IK 强化学习任务，基于 MuJoCo 与 PPO 训练。
+目标是控制底盘与 6 关节机械臂，让 `ee_site` 到达目标点。
 
 ## 任务示意
 
@@ -23,7 +23,7 @@
 
 ![训练效果](video/result.gif)
 
-任务设定（已简化）：
+任务设定：
 - 目标点位于底盘前方 ±60° 扇形
 - 距离 1–2m
 - 目标 z 相对 `ee_site` 在 ±10cm 内
@@ -57,7 +57,7 @@ WholeBody_RL/
 └─ README.md
 ```
 
-## ✅ 环境安装
+## 环境安装
 
 ### 创建虚拟环境并安装依赖
 
@@ -67,34 +67,36 @@ conda activate rl_ik
 pip install -r requirements.txt
 ```
 
-## 启动方式
+## 快速开始
 
 ### 训练
-> 训练渲染仅建议 `--ppo.num-envs 1`，否则会禁用可视化。
+> 训练渲染仅建议 `--ppo.num-envs 1`，否则会自动禁用可视化。
 
 ```bash
 python train_ppo.py
 ```
 
-训练参数可以在 ppo_main.py ， 中的 class PPOArgs: 内修改
-常用关键参数（含义）：
-- `exp_name`：实验名（会自动拼接时间戳）
-- `seed`：随机种子
-- `cuda`：是否启用 GPU
-- `num_envs`：并行环境数
-- `num_steps`：每次 rollout 步数
-- `total_timesteps`：总训练步数
-- `learning_rate`：学习率
-- `gamma`：折扣因子
-- `gae_lambda`：GAE 系数
-- `update_epochs`：每次更新的 epoch 数
-- `num_minibatch`：小批量数
-- `clip_coef`：PPO 裁剪系数
-- `ent_coef`：熵奖励系数
-- `vf_coef`：价值损失系数
-- `reward_scale`：奖励缩放
-- `save_model`：是否保存模型
-- `track` / `wandb_project_name`：wandb 开关与项目名
+训练参数在 `ppo_main.py` 的 `PPOArgs` 中配置。常用参数如下：
+
+| 参数 | 说明 |
+| --- | --- |
+| `exp_name` | 实验名（自动拼接时间戳） |
+| `seed` | 随机种子 |
+| `cuda` | 是否启用 GPU |
+| `num_envs` | 并行环境数 |
+| `num_steps` | 每次 rollout 步数 |
+| `total_timesteps` | 总训练步数 |
+| `learning_rate` | 学习率 |
+| `gamma` | 折扣因子 |
+| `gae_lambda` | GAE 系数 |
+| `update_epochs` | 每次更新的 epoch 数 |
+| `num_minibatch` | 小批量数 |
+| `clip_coef` | PPO 裁剪系数 |
+| `ent_coef` | 熵奖励系数 |
+| `vf_coef` | 价值损失系数 |
+| `reward_scale` | 奖励缩放 |
+| `save_model` | 是否保存模型 |
+| `track` / `wandb_project_name` | wandb 开关与项目名 |
 
 
 ### 测试评估（带可视化窗口）
@@ -134,11 +136,3 @@ runs/<exp_name>__<timestamp>/<iteration>.pt
 - 终止条件：成功（距离阈值）或超出最大步数
 
 如需调整奖励、终止条件或目标采样范围，请在 `mobile_robot_env.py` 中修改。
-
-## 视频转换（可选）
-
-将 mp4 转为 README 可预览的 gif：
-
-```bash
-python scripts/mp4_to_gif.py --input video/result.mp4 --output video/result.gif --width 720 --fps 10
-```
