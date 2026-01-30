@@ -98,7 +98,7 @@ class PPOArgs:
     use_target: bool = True  # 是否使用 target
 
     # === 训练规模 === 
-    num_envs: int = 16  # 并行环境数
+    num_envs: int = 1  # 并行环境数
     num_steps: int = 100  # 每次 rollout 步数
     total_timesteps: int = int(num_envs * num_steps * 1000)  # 总训练步数
 
@@ -305,7 +305,7 @@ def train(args: PPOArgs):
 
 
     cumulative_times = defaultdict(float)
-    watch_env_indices = [8,]
+    watch_env_indices = [random.randrange(args.num_envs)] if args.num_envs > 0 else []
     for iteration in trange(start_iteration + 1, args.num_iterations + 1, desc="Training Iterations"):
 
         # Reset bootstrap buffer each iteration to avoid stale values
@@ -343,26 +343,44 @@ def train(args: PPOArgs):
             # 3. 每步记录指定环境的 reward/penalty（0/4/8/12）
             metrics = {}
             if "reward_info" in infos:
-                reward_info_list = infos["reward_info"]
-                for idx in watch_env_indices:
-                    if idx >= len(reward_info_list):
-                        continue
-                    r_dict = reward_info_list[idx]
-                    if not r_dict:
-                        continue
-                    for k, v in r_dict.items():
-                        metrics[f"step_reward/env{idx}/{k}"] = float(v)
+                reward_info = infos["reward_info"]
+                if isinstance(reward_info, dict):
+                    for idx in watch_env_indices:
+                        for k, v in reward_info.items():
+                            if k.startswith("_"):
+                                continue
+                            if idx >= len(v):
+                                continue
+                            metrics[f"step_reward/env{idx}/{k}"] = float(v[idx])
+                else:
+                    for idx in watch_env_indices:
+                        if idx >= len(reward_info):
+                            continue
+                        r_dict = reward_info[idx]
+                        if not r_dict:
+                            continue
+                        for k, v in r_dict.items():
+                            metrics[f"step_reward/env{idx}/{k}"] = float(v)
 
             if "penalty_info" in infos:
-                penalty_info_list = infos["penalty_info"]
-                for idx in watch_env_indices:
-                    if idx >= len(penalty_info_list):
-                        continue
-                    p_dict = penalty_info_list[idx]
-                    if not p_dict:
-                        continue
-                    for k, v in p_dict.items():
-                        metrics[f"step_penalty/env{idx}/{k}"] = float(v)
+                penalty_info = infos["penalty_info"]
+                if isinstance(penalty_info, dict):
+                    for idx in watch_env_indices:
+                        for k, v in penalty_info.items():
+                            if k.startswith("_"):
+                                continue
+                            if idx >= len(v):
+                                continue
+                            metrics[f"step_penalty/env{idx}/{k}"] = float(v[idx])
+                else:
+                    for idx in watch_env_indices:
+                        if idx >= len(penalty_info):
+                            continue
+                        p_dict = penalty_info[idx]
+                        if not p_dict:
+                            continue
+                        for k, v in p_dict.items():
+                            metrics[f"step_penalty/env{idx}/{k}"] = float(v)
 
             if metrics:
                 _log_wandb(metrics, args, global_step)
