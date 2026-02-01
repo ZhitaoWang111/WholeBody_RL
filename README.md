@@ -44,8 +44,6 @@ WholeBody_RL/
 │  └─ state_target_encoder.py
 ├─ model_policy/                   # 策略/价值网络
 │  └─ mlp_agent.py
-├─ scripts/                        # 工具脚本
-│  └─ mp4_to_gif.py
 ├─ video/                          # 训练效果视频
 │  ├─ result.mp4
 │  └─ result.gif
@@ -98,6 +96,8 @@ python train_ppo.py
 | `save_model` | 是否保存模型 |
 | `track` / `wandb_project_name` | wandb 开关与项目名 |
 
+启动训练时可先将'num_env'，设为1，观察一下训练环境；然后关闭训练，调整'num_env'，设为16，开启多环境并行训练（此时自动禁用渲染），待训练结束后运行推理脚本，观察训练效果。
+
 
 ### 测试评估（带可视化窗口）
 
@@ -117,6 +117,7 @@ python test_ik_task.py \
   --sim-steps 20
 ```
 
+在完成训练后，修改-checkpoint参数默认选项为，命令行中反馈的模型参数文件保存地址。然后运行推理，测试效果。
 
 
 ## 模型保存
